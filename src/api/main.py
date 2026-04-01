@@ -34,6 +34,40 @@ logger = logging.getLogger(__name__)
 
 # ─── Lifespan ─────────────────────────────────────────────────────────────────
 
+def _reset_stuck_documents() -> None:
+    """
+    On startup, any document stuck in 'pending' or 'processing' means the
+    server restarted while a BackgroundTask was running — that task is gone.
+    Mark them 'failed' so the user knows to re-upload.
+    """
+    from .database import SessionLocal, Document
+    from datetime import datetime
+
+    db = SessionLocal()
+    try:
+        stuck = (
+            db.query(Document)
+            .filter(Document.status.in_(["pending", "processing"]))
+            .all()
+        )
+        if stuck:
+            for doc in stuck:
+                doc.status = "failed"
+                doc.error_message = (
+                    "Processing was interrupted because the server restarted. "
+                    "Please delete and re-upload this document."
+                )
+                doc.processed_at = datetime.utcnow()
+            db.commit()
+            logger.warning(
+                f"Reset {len(stuck)} stuck document(s) to 'failed' on startup."
+            )
+    except Exception as e:
+        logger.warning(f"Could not reset stuck documents: {e}")
+    finally:
+        db.close()
+
+
 def _seed_demo_user() -> None:
     """Create demo user (user@example.com / password123) if not present."""
     from .database import SessionLocal, User
@@ -66,6 +100,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Legal RAG API server...")
     create_tables()
     logger.info("Database tables ensured.")
+    _reset_stuck_documents()
     _seed_demo_user()
     yield
     logger.info("Legal RAG API server shutting down.")

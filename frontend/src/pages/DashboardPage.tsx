@@ -163,11 +163,44 @@ export const DashboardPage: React.FC = () => {
   const [jurisdiction, setJurisdiction] = useState('');
   const [ingestion, setIngestion] = useState<IngestionState | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Auto-poll interval for the documents table when any doc is processing
+  const tablePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     loadDocuments();
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (tablePollRef.current) clearInterval(tablePollRef.current);
+    };
   }, []);
+
+  // Start/stop auto-refresh of the whole document list whenever processing docs exist
+  useEffect(() => {
+    const hasProcessing = documents.some(
+      (d) => d.status === 'processing' || d.status === 'pending'
+    );
+
+    if (hasProcessing && !tablePollRef.current) {
+      tablePollRef.current = setInterval(async () => {
+        try {
+          const res = await apiClient.listDocuments();
+          setDocuments(res.documents);
+          const stillProcessing = res.documents.some(
+            (d) => d.status === 'processing' || d.status === 'pending'
+          );
+          if (!stillProcessing && tablePollRef.current) {
+            clearInterval(tablePollRef.current);
+            tablePollRef.current = null;
+          }
+        } catch { /* ignore */ }
+      }, 3000);
+    }
+
+    if (!hasProcessing && tablePollRef.current) {
+      clearInterval(tablePollRef.current);
+      tablePollRef.current = null;
+    }
+  }, [documents]);
 
   const loadDocuments = async () => {
     setIsLoading(true);
@@ -195,12 +228,9 @@ export const DashboardPage: React.FC = () => {
         if (doc.status === 'ready' || doc.status === 'failed') {
           clearInterval(pollRef.current!);
           pollRef.current = null;
-          // Refresh document list
           loadDocuments();
         }
-      } catch {
-        // silently retry on transient errors
-      }
+      } catch { /* silently retry */ }
     }, 1500);
   };
 
@@ -350,18 +380,27 @@ export const DashboardPage: React.FC = () => {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{doc.file_type.toUpperCase()}</td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`text-sm px-3 py-1 rounded-full font-medium ${
-                            doc.status === 'ready'
-                              ? 'bg-green-100 text-green-800'
-                              : doc.status === 'processing' || doc.status === 'pending'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {doc.status === 'ready' ? '✓ ' : doc.status === 'failed' ? '✕ ' : '⏳ '}
-                          {doc.status}
-                        </span>
+                        {doc.status === 'processing' || doc.status === 'pending' ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                            <span className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
+                            {doc.status}
+                          </span>
+                        ) : doc.status === 'ready' ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            ✓ ready
+                          </span>
+                        ) : (
+                          <div>
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-red-50 text-red-700 border border-red-200">
+                              ✕ failed
+                            </span>
+                            {doc.error_message && (
+                              <p className="text-xs text-red-600 mt-1 max-w-[220px] leading-tight">
+                                {doc.error_message}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{doc.chunk_count || '—'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">
