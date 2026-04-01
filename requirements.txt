@@ -1,0 +1,37 @@
+# ── Core API ──────────────────────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9        # file uploads
+pydantic[email]>=2.6.0
+pydantic-settings>=2.2.0
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+PyJWT>=2.8.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.1.2
+
+# ── Database ──────────────────────────────────────────────────────────────────
+sqlalchemy>=2.0.29
+# Swap in psycopg2-binary for PostgreSQL:
+# psycopg2-binary>=2.9.9
+
+# ── OpenAI ────────────────────────────────────────────────────────────────────
+openai>=1.17.0
+tiktoken>=0.6.0
+
+# ── Vector store ──────────────────────────────────────────────────────────────
+faiss-cpu>=1.7.4
+numpy>=1.26.0
+
+# ── Document ingestion ────────────────────────────────────────────────────────
+pdfplumber>=0.10.3
+python-docx>=1.1.0
+pytesseract>=0.3.10
+Pillow>=10.2.0
+chardet>=5.2.0
+langchain-text-splitters>=0.0.1
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.1
+httpx>=0.27.0                  # async HTTP for tests / webhooks
+aiofiles>=23.2.1

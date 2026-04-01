@@ -1,0 +1,32 @@
+# src/retrieval/requirements.txt
+#
+# Dependencies for Retrieval & Reranking module (Module 3)
+#
+# This module requires:
+# - Pydantic for data models (already used in Modules 1 & 2)
+# - OpenAI for query embedding (via Module 2)
+# - FAISS for semantic search (via Module 2)
+# - NumPy for vector operations (already used in Modules 1 & 2)
+#
+# Optional:
+# - rank-bm25: For BM25 keyword search (when hybrid search enabled)
+# - scikit-learn: For advanced NLP tasks
+# - nltk: For tokenization and lemmatization
+
+# Core dependencies (shared with Modules 1 & 2)
+pydantic>=2.0.0
+openai>=0.27.0
+faiss-cpu>=1.7.0
+numpy>=1.21.0
+
+# Optional: For BM25 keyword search (hybrid mode)
+rank-bm25>=0.2.2
+
+# Optional: For NLP tasks (clause extraction, tokenization)
+scikit-learn>=1.0.0
+nltk>=3.7
+
+# Development dependencies
+pytest>=7.0.0
+pytest-cov>=3.0.0
+pytest-timeout>=2.1.0

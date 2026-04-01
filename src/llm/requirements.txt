@@ -1,0 +1,16 @@
+# Dependencies for LLM Interface module (Module 4)
+#
+# Required packages:
+
+# OpenAI API client (for GPT-4o)
+openai>=1.0.0
+
+# Data validation and serialization
+pydantic>=2.0.0
+
+# Token counting for prompt tokens
+tiktoken>=0.5.0
+
+# Recommended (optional):
+# typing-extensions>=4.0.0  # For advanced type hints on older Python versions
+# tenacity>=8.0.0  # For more sophisticated retry strategies (alternative to our exponential backoff)
