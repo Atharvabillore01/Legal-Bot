@@ -156,10 +156,9 @@ def build_context_prompt(chunks: List[Dict], start_number: int = 1) -> str:
     context_parts = ["CONTEXT:"]
     
     for i, chunk in enumerate(chunks, start=start_number):
-        # Validate chunk has required fields
-        required_fields = ['text', 'doc_name', 'page_number', 'jurisdiction']
-        for field in required_fields:
-            if field not in chunk:
+        # Validate minimum required fields
+        for field in ['text', 'doc_name']:
+            if not chunk.get(field):
                 raise PromptTemplateError(
                     f"Chunk missing required field: {field}",
                     missing_fields=[field]
@@ -168,9 +167,10 @@ def build_context_prompt(chunks: List[Dict], start_number: int = 1) -> str:
         # Build chunk header with metadata
         chunk_header = CHUNK_PREFIX.format(
             chunk_number=i,
+            chunk_id=chunk.get('chunk_id', f'chunk_{i}'),
             doc_name=chunk['doc_name'],
-            page_number=chunk['page_number'],
-            jurisdiction=chunk.get('jurisdiction', 'Unknown')
+            page_number=chunk.get('page_number') or 'N/A',
+            jurisdiction=chunk.get('jurisdiction') or 'N/A'
         )
         
         # Add chunk to context
@@ -321,9 +321,10 @@ def allocate_token_budget(
             chunk_text = str(chunk.get('text', ''))
             chunk_header = CHUNK_PREFIX.format(
                 chunk_number=chunks_included + 1,
+                chunk_id=chunk.get('chunk_id', f'chunk_{chunks_included + 1}'),
                 doc_name=chunk.get('doc_name', ''),
-                page_number=chunk.get('page_number', ''),
-                jurisdiction=chunk.get('jurisdiction', '')
+                page_number=chunk.get('page_number') or 'N/A',
+                jurisdiction=chunk.get('jurisdiction') or 'N/A'
             )
             
             chunk_total_tokens = count_tokens(chunk_header + "\n" + chunk_text)

@@ -24,7 +24,6 @@ from .models import Citation
 from .exceptions import (
     CitationError,
     CitationParseError,
-    CitationMappingError,
     CitationValidationError,
     OffsetCalculationError
 )
@@ -157,15 +156,14 @@ def extract_cited_text(response_text: str, chunk_id: str, context_window: int = 
 
 def validate_chunk_id(chunk_id: str) -> bool:
     """
-    Validate chunk_id format (must be chunk_XXXXXX).
-    
-    Args:
-        chunk_id (str): Chunk ID to validate
-    
-    Returns:
-        bool: True if valid format
+    Validate chunk_id is non-empty and contains only safe characters.
+
+    Accepts UUID-based IDs (e.g. 550e8400_0), prefixed IDs (chunk_15),
+    and any alphanumeric/dash/underscore string.
     """
-    return bool(re.match(r"^chunk_[a-z0-9_]+$", chunk_id, re.IGNORECASE))
+    if not chunk_id or not chunk_id.strip():
+        return False
+    return bool(re.match(r"^[a-zA-Z0-9_\-]+$", chunk_id.strip()))
 
 
 def map_citations_to_sources(
@@ -206,11 +204,9 @@ def map_citations_to_sources(
             )
         
         if chunk_id not in metadata_lookup:
-            raise CitationMappingError(
-                f"Chunk metadata not found: {chunk_id}",
-                chunk_id=chunk_id
-            )
-        
+            logger.warning(f"Citation chunk_id not found in metadata: {chunk_id!r} — skipping")
+            continue
+
         resolved[chunk_id] = metadata_lookup[chunk_id]
     
     return resolved
@@ -260,8 +256,11 @@ def build_citation_objects(
         if not citation_ids:
             return []
         
-        # Map to metadata
-        resolved_citations = map_citations_to_sources(citation_ids, metadata_lookup)
+        # Map to metadata — missing chunk_ids are logged and skipped
+        try:
+            resolved_citations = map_citations_to_sources(citation_ids, metadata_lookup)
+        except CitationError:
+            resolved_citations = {}
         
         # Build Citation objects
         citations = []

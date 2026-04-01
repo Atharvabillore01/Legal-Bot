@@ -49,8 +49,8 @@ TOKEN_ALLOCATION_RESPONSE_PERCENT = 0.15   # 15% reserved for response
 # CITATION
 # ==============================================================
 
-# Matches [[CITE:some_chunk_id_123]]
-CITATION_MARKER_PATTERN = r"\[\[CITE:([a-zA-Z0-9_\-]+)\]\]"
+# Matches [[CITE:chunk_id]] — allow anything inside except ]] so we catch LLM variants
+CITATION_MARKER_PATTERN = r"\[\[CITE:([^\]]+)\]\]"
 
 # ==============================================================
 # CONFIDENCE THRESHOLDS
@@ -128,17 +128,18 @@ CRITICAL RULES — you MUST follow every rule below without exception:
    Do not provide legal advice, predict outcomes, or interpret beyond
    what the documents explicitly state."""
 
-INSTRUCTION_PROMPT = """INSTRUCTIONS:
-- Base your entire answer on the context chunks above and nothing else.
-- Cite every factual claim immediately: [[CITE:chunk_id]].
-- If the answer is not in the provided documents, say exactly:
-  "I cannot find this information in the provided documents."
-- Use the exact page numbers from chunk headers — never guess page numbers.
-- Retrieval confidence for this query: {confidence_score} (0=low, 1=high).
-  If confidence is below 0.5, explicitly caveat that coverage may be incomplete.
-- Format your response in clear, structured Markdown.
-- Do not reference any law, regulation, case, or fact absent from the chunks."""
+INSTRUCTION_PROMPT = """INSTRUCTIONS FOR YOUR RESPONSE:
+1. Use ONLY information from the context chunks above — nothing else.
+2. To cite a chunk, write [[CITE:chunk_id]] where chunk_id is EXACTLY the value after "chunk_id:" in the chunk header (e.g. if the header says [chunk_id:abc123_0], write [[CITE:abc123_0]]).
+   - Do NOT put page numbers, commas, spaces, or any other text inside [[CITE:...]].
+   - WRONG: [[CITE:chunk_3, Page: 71]] — RIGHT: [[CITE:abc123_0]]
+3. If the answer is not in the documents, say exactly: "I cannot find this information in the provided documents."
+4. Use the exact page numbers shown in chunk headers.
+5. Retrieval confidence: {confidence_score}. If below 0.5, add a caveat.
+6. Format as proper Markdown — use newlines between sections, not one continuous paragraph.
+   Start headings on their own line. Put each bullet on its own line.
+7. Do not reference laws, cases, or facts not present in the chunks."""
 
-CHUNK_PREFIX = "--- CHUNK {chunk_number} | Source: {doc_name} | Page: {page_number} | Jurisdiction: {jurisdiction} ---"
+CHUNK_PREFIX = "--- CHUNK {chunk_number} [chunk_id:{chunk_id}] | Source: {doc_name} | Page: {page_number} | Jurisdiction: {jurisdiction} ---"
 
 QUERY_PREFIX = "USER QUERY"
