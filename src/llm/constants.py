@@ -1,7 +1,8 @@
 """
 Configuration constants for the LLM interface module.
 
-All prompts, model params, token budgets, and feature flags live here.
+All prompts, model params, token budgets, confidence thresholds,
+and feature flags live here.
 """
 
 # ==============================================================
@@ -38,12 +39,36 @@ TOKEN_BUDGET_CONTEXT = 90_000     # Available for chunks
 TOKEN_BUDGET_QUERY = 512          # User query
 TOKEN_BUDGET_RESPONSE = 2048      # Reserved for model response
 
+# Percentage-based allocations (used by __init__.py and reporting)
+TOKEN_ALLOCATION_SYSTEM_PERCENT = 0.10     # 10% for system prompt
+TOKEN_ALLOCATION_CONTEXT_PERCENT = 0.70    # 70% for context chunks
+TOKEN_ALLOCATION_QUERY_PERCENT = 0.05      # 5%  for user query
+TOKEN_ALLOCATION_RESPONSE_PERCENT = 0.15   # 15% reserved for response
+
 # ==============================================================
 # CITATION
 # ==============================================================
 
 # Matches [[CITE:some_chunk_id_123]]
 CITATION_MARKER_PATTERN = r"\[\[CITE:([a-zA-Z0-9_\-]+)\]\]"
+
+# ==============================================================
+# CONFIDENCE THRESHOLDS
+# ==============================================================
+
+CONFIDENCE_THRESHOLD_LOW = 0.3        # < 0.3  → LOW
+CONFIDENCE_THRESHOLD_MEDIUM = 0.7     # 0.3–0.7 → MEDIUM, > 0.7 → HIGH
+
+CONFIDENCE_LEVELS = {
+    "LOW": {"min": 0.0, "max": CONFIDENCE_THRESHOLD_LOW, "ui_color": "red"},
+    "MEDIUM": {"min": CONFIDENCE_THRESHOLD_LOW, "max": CONFIDENCE_THRESHOLD_MEDIUM, "ui_color": "yellow"},
+    "HIGH": {"min": CONFIDENCE_THRESHOLD_MEDIUM, "max": 1.0, "ui_color": "green"},
+}
+
+# Confidence adjustment penalties
+CONFIDENCE_CONTRADICTION_PENALTY = 0.95   # ×0.95 per detected contradiction
+CONFIDENCE_LOW_AUTHORITY_PENALTY = 0.85   # ×0.85 for low-authority sources
+CONFIDENCE_OLD_SOURCE_PENALTY = 0.90      # ×0.90 for sources >5 years old
 
 # ==============================================================
 # FEATURE FLAGS
