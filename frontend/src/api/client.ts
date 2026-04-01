@@ -141,6 +141,11 @@ class ApiClient {
     await this.client.delete(`/documents/${docId}`);
   }
 
+  async resetStuckDocuments(): Promise<{ reset: number; message: string }> {
+    const { data } = await this.client.post('/ingest/reset-stuck');
+    return data;
+  }
+
   // ─── Query ─────────────────────────────────────────────────────────────────
 
   async submitQuery(

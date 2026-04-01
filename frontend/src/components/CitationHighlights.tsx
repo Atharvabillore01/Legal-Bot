@@ -19,6 +19,29 @@ export const HighlightedAnswer: React.FC<HighlightedAnswerProps> = ({ answer, ci
     return num != null ? ` [${num}]` : '';
   });
 
+  // Normalize inline markdown: LLM sometimes outputs headings/bullets on one line.
+  // Strategy: split on heading/bullet markers, then rejoin with proper newlines.
+  const normalized = (() => {
+    let t = processed;
+
+    // 1. Force every heading onto its own line (handles # ## ### etc.)
+    //    Works even when no newline precedes the marker.
+    t = t.replace(/(#{1,6})\s+/g, '\n\n$1 ');
+
+    // 2. Force list items onto their own line.
+    //    A bullet is " - " or " * " surrounded by spaces (not inside **bold**).
+    t = t.replace(/\s+-\s+(?=[A-Z\w])/g, '\n- ');
+
+    // 3. Strip stray leading/trailing * and # that the LLM emits as decorators.
+    //    e.g. "**Heading**" in the middle of a line → keep bold, just ensure newline before it.
+    t = t.replace(/\s\*\*([^*]+)\*\*\s*-\s*/g, '\n\n**$1**\n- ');
+
+    // 4. Collapse runs of 3+ newlines to double newline.
+    t = t.replace(/\n{3,}/g, '\n\n');
+
+    return t.trim();
+  })();
+
   return (
     <div className="answer-prose">
       <ReactMarkdown
@@ -75,7 +98,7 @@ export const HighlightedAnswer: React.FC<HighlightedAnswerProps> = ({ answer, ci
           },
         }}
       >
-        {processed}
+        {normalized}
       </ReactMarkdown>
     </div>
   );

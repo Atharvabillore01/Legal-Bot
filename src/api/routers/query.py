@@ -6,7 +6,7 @@ POST /query  — semantic search + LLM response with citations and confidence sc
 
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from tracemalloc import start
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -19,6 +19,49 @@ from ..database import User
 
 router = APIRouter(prefix="/query", tags=["Query"])
 logger = logging.getLogger(__name__)
+
+# ── Greeting / chitchat detection ─────────────────────────────────────────────
+
+import re
+
+_GREETING_PATTERNS = re.compile(
+    r"^\s*(hi+|hey+|hello+|howdy|greetings|good\s*(morning|afternoon|evening|day)|"
+    r"what'?s\s*up|sup|yo+|hiya|heya|namaste|salut|bonjour|hola)\W*$",
+    re.IGNORECASE,
+)
+
+_GREETING_RESPONSE = (
+    "Hello! I'm LegalBot, your AI-powered legal document assistant. "
+    "Upload a legal document and ask me questions like:\n\n"
+    "- *What are the key obligations in this contract?*\n"
+    "- *What does the agreement say about termination?*\n"
+    "- *Summarize the court findings on page 5.*\n\n"
+    "How can I help you today?"
+)
+
+
+def _is_greeting(query: str) -> bool:
+    return bool(_GREETING_PATTERNS.match(query.strip()))
+
+
+def _condense_query(query: str) -> str:
+    """
+    Light normalisation: strip excess whitespace, remove filler phrases,
+    ensure the query ends with a question mark if it reads like a question.
+    """
+    q = query.strip()
+    # Remove common filler openers
+    q = re.sub(
+        r"^(can you |could you |please |kindly |tell me |i want to know |i need |"
+        r"what is |what are |what does |give me |show me )",
+        "",
+        q,
+        flags=re.IGNORECASE,
+    ).strip()
+    # Capitalise first letter
+    if q:
+        q = q[0].upper() + q[1:]
+    return q or query.strip()
 
 
 @router.post("", response_model=QueryResponse)
@@ -39,7 +82,30 @@ async def query_documents(
     5. Return cited answer with confidence level
     """
     start = time.perf_counter()
-    audit_details: dict = {"query": body.query[:200], "k": body.k}
+
+    # ── Greeting short-circuit ─────────────────────────────────────────────────
+    if _is_greeting(body.query):
+        return QueryResponse(
+            answer=_GREETING_RESPONSE,
+            citations=[],
+            source_chunks=[],
+            confidence_score=1.0,
+            confidence_level="HIGH",
+            query=body.query,
+            search_time_ms=0,
+            llm_time_ms=0,
+            total_time_ms=(time.perf_counter() - start) * 1000,
+            model="system",
+            created_at=datetime.now(timezone.utc),
+            has_contradictions=False,
+        )
+
+    # ── Condense / reformat the query ─────────────────────────────────────────
+    condensed_query = _condense_query(body.query)
+    if condensed_query != body.query:
+        logger.info(f"Query condensed: '{body.query}' → '{condensed_query}'")
+
+    audit_details: dict = {"query": body.query[:200], "condensed_query": condensed_query[:200], "k": body.k}
 
     try:
         # ── Retrieval ─────────────────────────────────────────────────────────
@@ -64,7 +130,7 @@ async def query_documents(
 
         retrieval_result = retrieve_and_rerank(
             user_id=current_user.id,
-            query=body.query,
+            query=condensed_query,
             options=options,
         )
         search_time_ms = (time.perf_counter() - search_start) * 1000
@@ -101,7 +167,7 @@ async def query_documents(
 
         llm_response = engine.query_llm(
             chunks=chunks_as_dicts,
-            query=body.query,
+            query=condensed_query,
             chunk_metadata=chunk_metadata,
             chunk_scores=chunk_scores,
             contradiction_count=sum(len(chunk.contradictions) for chunk in retrieval_result.results) if retrieval_result.has_contradictions else 0,

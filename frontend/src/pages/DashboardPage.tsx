@@ -258,6 +258,17 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
+  const handleResetStuck = async () => {
+    try {
+      const result = await apiClient.resetStuckDocuments();
+      if (result.reset > 0) {
+        loadDocuments();
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to reset stuck documents');
+    }
+  };
+
   const handleDelete = async (docId: string) => {
     if (!confirm('Delete this document? This action cannot be undone.')) return;
     try {
@@ -277,9 +288,20 @@ export const DashboardPage: React.FC = () => {
             <h1 className="text-4xl font-bold text-gray-900">Dashboard</h1>
             <p className="text-gray-600 mt-2">Manage your legal documents and view analysis</p>
           </div>
-          <button onClick={() => navigate('/query')} className="btn-primary">
-            Ask a Question
-          </button>
+          <div className="flex gap-3">
+            {documents.some(d => d.status === 'processing' || d.status === 'pending') && (
+              <button
+                onClick={handleResetStuck}
+                className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded-lg hover:bg-amber-100"
+                title="Mark stuck processing documents as failed so they can be re-uploaded"
+              >
+                Reset Stuck
+              </button>
+            )}
+            <button onClick={() => navigate('/query')} className="btn-primary">
+              Ask a Question
+            </button>
+          </div>
         </div>
 
         {error && <ErrorAlert message={error} onDismiss={() => setError('')} />}

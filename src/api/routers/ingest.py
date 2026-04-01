@@ -101,6 +101,26 @@ async def ingest_document(
     )
 
 
+def _mark_failed(doc_id: str, error_message: str) -> None:
+    """Write 'failed' status using a fresh DB session (safe to call after exceptions)."""
+    from ..database import SessionLocal, Document
+    from datetime import datetime
+
+    db2 = SessionLocal()
+    try:
+        doc = db2.query(Document).filter(Document.id == doc_id).first()
+        if doc:
+            doc.status = "failed"
+            doc.error_message = error_message
+            doc.processed_at = datetime.utcnow()
+            db2.commit()
+            logger.info(f"Marked document {doc_id} as failed: {error_message}")
+    except Exception as ex:
+        logger.error(f"Could not mark document {doc_id} as failed: {ex}")
+    finally:
+        db2.close()
+
+
 def _process_document(
     doc_id: str,
     user_id: str,
@@ -158,6 +178,7 @@ def _process_document(
             doc.status = "ready"
             doc.chunk_count = len(chunks)
             doc.processed_at = datetime.utcnow()
+            db.commit()
             logger.info(f"Document {doc_id} processed: {len(chunks)} chunks indexed")
 
         finally:
@@ -165,11 +186,37 @@ def _process_document(
 
     except Exception as e:
         logger.error(f"Ingestion failed for document {doc_id}: {e}", exc_info=True)
-        doc = db.query(Document).filter(Document.id == doc_id).first()
-        if doc:
-            doc.status = "failed"
-            doc.error_message = str(e)[:500]
-            doc.processed_at = datetime.utcnow()
-        db.commit()
+        # Use a FRESH session — the original may be in an invalid state after an exception
+        _mark_failed(doc_id, str(e)[:500])
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception:
+            pass
+
+
+@router.post("/reset-stuck", tags=["Ingestion"])
+async def reset_stuck_documents(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Reset any documents stuck in 'pending' or 'processing' to 'failed'.
+    Call this if documents are not progressing after an error or restart.
+    """
+    from datetime import datetime, timezone
+
+    stuck = (
+        db.query(Document)
+        .filter(
+            Document.user_id == current_user.id,
+            Document.status.in_(["pending", "processing"]),
+        )
+        .all()
+    )
+    for doc in stuck:
+        doc.status = "failed"
+        doc.error_message = "Manually reset — processing task did not complete."
+        doc.processed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"reset": len(stuck), "message": f"Reset {len(stuck)} stuck document(s) to failed."}

@@ -130,15 +130,33 @@ CRITICAL RULES — you MUST follow every rule below without exception:
 
 INSTRUCTION_PROMPT = """INSTRUCTIONS FOR YOUR RESPONSE:
 1. Use ONLY information from the context chunks above — nothing else.
-2. To cite a chunk, write [[CITE:chunk_id]] where chunk_id is EXACTLY the value after "chunk_id:" in the chunk header (e.g. if the header says [chunk_id:abc123_0], write [[CITE:abc123_0]]).
-   - Do NOT put page numbers, commas, spaces, or any other text inside [[CITE:...]].
-   - WRONG: [[CITE:chunk_3, Page: 71]] — RIGHT: [[CITE:abc123_0]]
-3. If the answer is not in the documents, say exactly: "I cannot find this information in the provided documents."
-4. Use the exact page numbers shown in chunk headers.
-5. Retrieval confidence: {confidence_score}. If below 0.5, add a caveat.
-6. Format as proper Markdown — use newlines between sections, not one continuous paragraph.
-   Start headings on their own line. Put each bullet on its own line.
-7. Do not reference laws, cases, or facts not present in the chunks."""
+2. Citations — write [[CITE:chunk_id]] immediately after each fact.
+   - chunk_id is EXACTLY the value after "chunk_id:" in the chunk header.
+   - WRONG: [[CITE:chunk_3, Page: 71]]   RIGHT: [[CITE:abc123_0]]
+3. If the answer is not in the documents, say exactly:
+   "I cannot find this information in the provided documents."
+4. Retrieval confidence: {confidence_score}. If below 0.5, add a disclaimer line.
+5. Do not reference laws, cases, or facts not present in the chunks.
+
+FORMATTING RULES — CRITICAL, FOLLOW EXACTLY:
+- Output STRICT Markdown. Every heading MUST be on its own separate line.
+- Put a blank line (empty line) before AND after every heading.
+- Put each bullet point on its own line starting with "- ".
+- NEVER place a heading and body text on the same line.
+- NEVER run multiple sections together without blank lines between them.
+
+CORRECT example:
+## Case Overview
+
+The incident occurred on 16 December 2012. [[CITE:abc_0]]
+
+## Key Events
+
+- The accused boarded the bus at Munirka. [[CITE:abc_1]]
+- The victim was assaulted and thrown from the bus. [[CITE:abc_2]]
+
+WRONG example (do NOT do this):
+## Case Overview The incident occurred on 16 December 2012. ## Key Events - The accused boarded..."""
 
 CHUNK_PREFIX = "--- CHUNK {chunk_number} [chunk_id:{chunk_id}] | Source: {doc_name} | Page: {page_number} | Jurisdiction: {jurisdiction} ---"
 
