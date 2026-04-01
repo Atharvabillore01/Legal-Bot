@@ -1,10 +1,157 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
-import { LoadingSpinner, ErrorAlert, SuccessAlert, EmptyState } from '@/components/Common';
+import { ErrorAlert, EmptyState } from '@/components/Common';
 import { apiClient } from '@/api/client';
 import { Document } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
+
+// ── Ingestion progress bar ────────────────────────────────────────────────────
+
+type IngestionStage = 'uploading' | 'pending' | 'processing' | 'ready' | 'failed';
+
+interface IngestionState {
+  docId: string;
+  filename: string;
+  stage: IngestionStage;
+  chunkCount: number;
+  errorMessage: string;
+}
+
+const STAGE_PROGRESS: Record<IngestionStage, number> = {
+  uploading: 15,
+  pending: 35,
+  processing: 65,
+  ready: 100,
+  failed: 100,
+};
+
+const STAGE_LABEL: Record<IngestionStage, string> = {
+  uploading: 'Uploading file…',
+  pending: 'Queued for processing…',
+  processing: 'Chunking & embedding…',
+  ready: 'Ingestion complete',
+  failed: 'Ingestion failed',
+};
+
+const IngestionProgressBar: React.FC<{ state: IngestionState; onDismiss: () => void }> = ({
+  state,
+  onDismiss,
+}) => {
+  const progress = STAGE_PROGRESS[state.stage];
+  const isDone = state.stage === 'ready' || state.stage === 'failed';
+  const isFailed = state.stage === 'failed';
+
+  return (
+    <div
+      className={`rounded-xl border p-5 shadow-sm transition-all ${
+        isFailed
+          ? 'border-red-200 bg-red-50'
+          : state.stage === 'ready'
+          ? 'border-green-200 bg-green-50'
+          : 'border-blue-200 bg-blue-50'
+      }`}
+    >
+      {/* Header row */}
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <p
+            className={`font-semibold text-sm ${
+              isFailed ? 'text-red-800' : state.stage === 'ready' ? 'text-green-800' : 'text-blue-800'
+            }`}
+          >
+            {state.filename}
+          </p>
+          <p
+            className={`text-xs mt-0.5 ${
+              isFailed ? 'text-red-600' : state.stage === 'ready' ? 'text-green-600' : 'text-blue-600'
+            }`}
+          >
+            {STAGE_LABEL[state.stage]}
+          </p>
+        </div>
+
+        {isDone && (
+          <button
+            onClick={onDismiss}
+            className={`text-lg leading-none ml-4 ${
+              isFailed ? 'text-red-400 hover:text-red-600' : 'text-green-400 hover:text-green-600'
+            }`}
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {/* Progress bar */}
+      <div className="h-2.5 rounded-full bg-gray-200 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-700 ease-in-out ${
+            isFailed
+              ? 'bg-red-500'
+              : state.stage === 'ready'
+              ? 'bg-green-500'
+              : 'bg-blue-500'
+          }`}
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      {/* Status detail */}
+      <div className="flex items-center justify-between mt-2">
+        <div className="flex gap-4">
+          {(['uploading', 'pending', 'processing', 'ready'] as IngestionStage[]).map((s) => {
+            const reached =
+              STAGE_PROGRESS[state.stage] >= STAGE_PROGRESS[s] && !isFailed;
+            return (
+              <span
+                key={s}
+                className={`text-xs font-medium ${
+                  reached ? 'text-blue-700' : 'text-gray-400'
+                } ${state.stage === s && !isDone ? 'animate-pulse' : ''}`}
+              >
+                {s === 'uploading' ? '① Upload' : s === 'pending' ? '② Queue' : s === 'processing' ? '③ Process' : '④ Done'}
+              </span>
+            );
+          })}
+        </div>
+        <span
+          className={`text-xs font-semibold ${
+            isFailed ? 'text-red-700' : state.stage === 'ready' ? 'text-green-700' : 'text-blue-700'
+          }`}
+        >
+          {progress}%
+        </span>
+      </div>
+
+      {/* Completion message */}
+      {state.stage === 'ready' && (
+        <div className="mt-3 flex items-center gap-2 bg-green-100 rounded-lg px-3 py-2">
+          <span className="text-green-600 text-lg">✓</span>
+          <p className="text-sm text-green-800 font-medium">
+            Document ready!{' '}
+            {state.chunkCount > 0 && (
+              <span className="font-bold">{state.chunkCount} chunks</span>
+            )}{' '}
+            indexed and available for queries.
+          </p>
+        </div>
+      )}
+
+      {/* Error message */}
+      {isFailed && (
+        <div className="mt-3 flex items-center gap-2 bg-red-100 rounded-lg px-3 py-2">
+          <span className="text-red-600 text-lg">✕</span>
+          <p className="text-sm text-red-800">
+            {state.errorMessage || 'Ingestion failed. Please try again.'}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -12,51 +159,70 @@ export const DashboardPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [jurisdiction, setJurisdiction] = useState('');
+  const [ingestion, setIngestion] = useState<IngestionState | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load documents on mount
   useEffect(() => {
     loadDocuments();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
   const loadDocuments = async () => {
     setIsLoading(true);
-    setError('');
     try {
       const response = await apiClient.listDocuments();
       setDocuments(response.documents);
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to load documents');
+      setError(err.response?.data?.detail || 'Failed to load documents');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const startPolling = (docId: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const doc = await apiClient.getDocument(docId);
+
+        setIngestion((prev) =>
+          prev ? { ...prev, stage: doc.status as IngestionStage, chunkCount: doc.chunk_count || 0, errorMessage: doc.error_message || '' } : prev
+        );
+
+        if (doc.status === 'ready' || doc.status === 'failed') {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+          // Refresh document list
+          loadDocuments();
+        }
+      } catch {
+        // silently retry on transient errors
+      }
+    }, 1500);
+  };
+
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file) {
-      setError('Please select a file');
-      return;
-    }
+    if (!file) return;
 
     setIsUploading(true);
     setError('');
+    setIngestion({ docId: '', filename: file.name, stage: 'uploading', chunkCount: 0, errorMessage: '' });
 
     try {
-      await apiClient.uploadDocument(
-        file,
-        jurisdiction || undefined,
-      );
-      setSuccess('Document uploaded successfully! Processing...');
+      const result = await apiClient.uploadDocument(file, jurisdiction || undefined);
+
+      setIngestion({ docId: result.document_id, filename: file.name, stage: 'pending', chunkCount: 0, errorMessage: '' });
       setFile(null);
       setJurisdiction('');
 
-      // Reload documents
-      setTimeout(() => loadDocuments(), 2000);
+      startPolling(result.document_id);
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to upload document');
+      setError(err.response?.data?.detail || 'Failed to upload document');
+      setIngestion(null);
     } finally {
       setIsUploading(false);
     }
@@ -64,43 +230,43 @@ export const DashboardPage: React.FC = () => {
 
   const handleDelete = async (docId: string) => {
     if (!confirm('Delete this document? This action cannot be undone.')) return;
-
     try {
       await apiClient.deleteDocument(docId);
-      setSuccess('Document deleted successfully');
       loadDocuments();
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to delete document');
+      setError(err.response?.data?.detail || 'Failed to delete document');
     }
   };
 
   return (
     <Layout>
       <div className="max-w-6xl mx-auto space-y-8">
-        {/* Page Header */}
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold text-gray-900">Dashboard</h1>
             <p className="text-gray-600 mt-2">Manage your legal documents and view analysis</p>
           </div>
-          <button
-            onClick={() => navigate('/query')}
-            className="btn-primary"
-          >
+          <button onClick={() => navigate('/query')} className="btn-primary">
             Ask a Question
           </button>
         </div>
 
-        {/* Alerts */}
         {error && <ErrorAlert message={error} onDismiss={() => setError('')} />}
-        {success && <SuccessAlert message={success} onDismiss={() => setSuccess('')} />}
 
-        {/* Upload Section */}
+        {/* Ingestion progress */}
+        {ingestion && (
+          <IngestionProgressBar
+            state={ingestion}
+            onDismiss={() => setIngestion(null)}
+          />
+        )}
+
+        {/* Upload form */}
         <div className="card">
           <h2 className="text-2xl font-semibold text-gray-900 mb-6">Upload Document</h2>
 
           <form onSubmit={handleUpload} className="space-y-4">
-            {/* File Input */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Document File (PDF, DOCX, TXT)
@@ -120,7 +286,6 @@ export const DashboardPage: React.FC = () => {
               )}
             </div>
 
-            {/* Jurisdiction */}
             <div>
               <label htmlFor="jurisdiction" className="block text-sm font-medium text-gray-700 mb-2">
                 Jurisdiction (Optional)
@@ -136,23 +301,25 @@ export const DashboardPage: React.FC = () => {
               />
             </div>
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={isUploading || !file}
               className="w-full btn-primary"
             >
-              {isUploading ? 'Uploading...' : 'Upload Document'}
+              {isUploading ? 'Uploading…' : 'Upload Document'}
             </button>
           </form>
         </div>
 
-        {/* Documents List */}
+        {/* Documents list */}
         <div className="card">
           <h2 className="text-2xl font-semibold text-gray-900 mb-6">Your Documents</h2>
 
           {isLoading ? (
-            <LoadingSpinner message="Loading documents..." />
+            <div className="flex items-center gap-3 text-gray-500 py-4">
+              <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm">Loading documents…</span>
+            </div>
           ) : documents.length === 0 ? (
             <EmptyState
               icon="📄"
@@ -184,19 +351,19 @@ export const DashboardPage: React.FC = () => {
                       <td className="px-4 py-3 text-sm text-gray-600">{doc.file_type.toUpperCase()}</td>
                       <td className="px-4 py-3">
                         <span
-                          className={`text-sm px-3 py-1 rounded-full ${
+                          className={`text-sm px-3 py-1 rounded-full font-medium ${
                             doc.status === 'ready'
                               ? 'bg-green-100 text-green-800'
                               : doc.status === 'processing' || doc.status === 'pending'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-red-100 text-red-800'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
                           }`}
                         >
-                          {doc.status === 'processing' || doc.status === 'pending' ? '⏳ ' : doc.status === 'ready' ? '✓ ' : '✕ '}
+                          {doc.status === 'ready' ? '✓ ' : doc.status === 'failed' ? '✕ ' : '⏳ '}
                           {doc.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{doc.chunk_count || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{doc.chunk_count || '—'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {formatDistanceToNow(new Date(doc.uploaded_at), { addSuffix: true })}
                       </td>
