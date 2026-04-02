@@ -3,14 +3,14 @@ Configuration constants for embeddings and vector store.
 """
 
 # OpenAI Embedding Model
-EMBEDDING_MODEL = "text-embedding-3-large"
-EMBEDDING_DIMENSION = 3072
-EMBEDDING_MAX_TOKENS = 8192  # Hard API limit for text-embedding-3-large
+EMBEDDING_MODEL = "text-embedding-3-small"  # 1536D — 4× smaller responses, same quality for legal RAG
+EMBEDDING_DIMENSION = 1536
+EMBEDDING_MAX_TOKENS = 8192  # Hard API limit
 EMBEDDING_COST_PER_1M_TOKENS = 0.02  # USD
 
-# Batching
-BATCH_SIZE = 100
-MAX_BATCH_SIZE = 100
+# Batching — keep small to avoid MemoryError on large documents
+BATCH_SIZE = 20
+MAX_BATCH_SIZE = 20
 MIN_BATCH_SIZE = 1
 MAX_RETRIES = 3
 RETRY_BACKOFF_BASE = 2  # exponential: 2^n seconds

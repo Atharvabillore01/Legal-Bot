@@ -18,7 +18,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from .database import create_tables
 from .routers import auth, documents, ingest, query, audit
@@ -181,4 +182,11 @@ async def health_check():
 
 @app.get("/", include_in_schema=False)
 async def root():
-    return {"message": "Legal RAG API. Visit /docs for the interactive API explorer."}
+    return RedirectResponse(url="/app/index.html")
+
+
+# ─── Static frontend ──────────────────────────────────────────────────────────
+
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+if os.path.isdir(_STATIC_DIR):
+    app.mount("/app", StaticFiles(directory=_STATIC_DIR, html=True), name="static")

@@ -60,15 +60,15 @@ def semantic_search(
         if not isinstance(query_embedding, np.ndarray):
             raise InvalidEmbeddingError("Query embedding must be numpy array")
         
-        if query_embedding.shape != (3072,):
+        if query_embedding.ndim != 1 or query_embedding.shape[0] == 0:
             raise InvalidEmbeddingError(
-                f"Query embedding must be 3072-D, got {query_embedding.shape}"
+                f"Query embedding must be a 1-D vector, got shape {query_embedding.shape}"
             )
-        
+
         if query_embedding.dtype != np.float32:
             query_embedding = query_embedding.astype(np.float32)
-        
-        # Reshape for FAISS (1 x 3072)
+
+        # Reshape for FAISS (1 x D)
         query_embedding = query_embedding.reshape(1, -1)
         
         # Load FAISS index

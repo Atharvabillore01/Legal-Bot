@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LegalBot — Sign In</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { background: linear-gradient(135deg, #EEF2FF 0%, #F1F5F9 50%, #F0FDF4 100%); }
+  </style>
+</head>
+<body>
+
+<div class="auth-shell">
+  <div class="auth-card">
+    <div class="auth-header">
+      <div class="auth-logo">⚖️</div>
+      <h1>LegalBot</h1>
+      <p>AI-Powered Legal Document Review</p>
+    </div>
+
+    <div class="auth-body">
+      <div id="alert"></div>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" onclick="switchTab('login')">Sign In</button>
+        <button class="auth-tab" onclick="switchTab('register')">Register</button>
+      </div>
+
+      <!-- Login Form -->
+      <form id="login-form" onsubmit="doLogin(event)">
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="login-email" placeholder="you@example.com" required autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" id="login-btn">
+          Sign In
+        </button>
+      </form>
+
+      <!-- Register Form -->
+      <form id="register-form" style="display:none" onsubmit="doRegister(event)">
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="reg-name" placeholder="John Doe" autocomplete="name">
+        </div>
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="reg-email" placeholder="you@example.com" required autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="reg-password" placeholder="Min. 8 characters" required minlength="8" autocomplete="new-password">
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" id="reg-btn">
+          Create Account
+        </button>
+      </form>
+    </div>
+
+    <div class="auth-footer">
+      Demo: <strong>user@example.com</strong> / <strong>password123</strong>
+    </div>
+  </div>
+</div>
+
+<script src="api.js"></script>
+<script>
+  // Redirect if already logged in
+  if (API.getToken()) window.location.href = '/app/dashboard.html';
+
+  function switchTab(tab) {
+    document.querySelectorAll('.auth-tab').forEach((t,i) => t.classList.toggle('active', (i===0 && tab==='login') || (i===1 && tab==='register')));
+    document.getElementById('login-form').style.display = tab==='login' ? 'block' : 'none';
+    document.getElementById('register-form').style.display = tab==='register' ? 'block' : 'none';
+    document.getElementById('alert').innerHTML = '';
+  }
+
+  function showAlert(msg, type='error') {
+    document.getElementById('alert').innerHTML = `<div class="alert alert-${type}">${msg}</div>`;
+  }
+
+  async function doLogin(e) {
+    e.preventDefault();
+    const btn = document.getElementById('login-btn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Signing in…';
+    try {
+      const data = await API.login(
+        document.getElementById('login-email').value.trim(),
+        document.getElementById('login-password').value
+      );
+      API.setTokens(data.access_token, data.refresh_token);
+      window.location.href = '/app/dashboard.html';
+    } catch(err) {
+      showAlert(err.detail || 'Login failed. Check your credentials.');
+      btn.disabled = false; btn.innerHTML = 'Sign In';
+    }
+  }
+
+  async function doRegister(e) {
+    e.preventDefault();
+    const btn = document.getElementById('reg-btn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Creating account…';
+    try {
+      const data = await API.register(
+        document.getElementById('reg-email').value.trim(),
+        document.getElementById('reg-password').value,
+        document.getElementById('reg-name').value.trim()
+      );
+      API.setTokens(data.access_token, data.refresh_token);
+      window.location.href = '/app/dashboard.html';
+    } catch(err) {
+      showAlert(err.detail || 'Registration failed. Try a different email.');
+      btn.disabled = false; btn.innerHTML = 'Create Account';
+    }
+  }
+</script>
+</body>
+</html>

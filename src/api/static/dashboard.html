@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LegalBot — Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- Nav -->
+  <nav>
+    <a class="nav-brand" href="/app/dashboard.html">
+      <span>⚖️</span> LegalBot
+    </a>
+    <div class="nav-links">
+      <a class="nav-link active" href="/app/dashboard.html">📁 Documents</a>
+      <a class="nav-link" href="/app/query.html">💬 Ask a Question</a>
+      <button class="nav-link danger" onclick="doLogout()">Sign Out</button>
+    </div>
+  </nav>
+
+  <div class="main">
+
+    <!-- Page header -->
+    <div class="page-header">
+      <div>
+        <h1>Document Dashboard</h1>
+        <p>Upload and manage your legal documents</p>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="btn btn-secondary btn-sm" id="reset-btn" onclick="resetStuck()" style="display:none">
+          ⚠️ Reset Stuck
+        </button>
+        <a class="btn btn-primary" href="/app/query.html">💬 Ask a Question</a>
+      </div>
+    </div>
+
+    <!-- Stats row -->
+    <div class="grid-3" style="margin-bottom:24px" id="stats-row">
+      <div class="stat-card">
+        <div class="stat-icon indigo">📄</div>
+        <div><div class="stat-num" id="stat-total">—</div><div class="stat-label">Total Documents</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon green">✅</div>
+        <div><div class="stat-num" id="stat-ready">—</div><div class="stat-label">Ready</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon amber">⏳</div>
+        <div><div class="stat-num" id="stat-processing">—</div><div class="stat-label">Processing</div></div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="align-items:start">
+
+      <!-- Upload card -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Upload Document</div>
+          <div class="card-subtitle">PDF, DOCX, or TXT — max 50 MB</div>
+        </div>
+        <div class="card-body">
+          <div id="upload-alert"></div>
+
+          <div class="upload-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+            <div class="icon">📂</div>
+            <p id="drop-label">Click to choose file or drag & drop</p>
+          </div>
+          <input type="file" id="file-input" accept=".pdf,.docx,.txt" style="display:none" onchange="onFileSelect(this)">
+
+          <div id="file-info" style="display:none; margin-top:14px; padding:10px 14px; background:var(--primary-light); border-radius:var(--radius-sm); font-size:13px; color:var(--primary); font-weight:500"></div>
+
+          <div style="margin-top:14px" class="grid-2">
+            <div class="form-group" style="margin:0">
+              <label>Document Name (optional)</label>
+              <input type="text" id="doc-name" placeholder="e.g. NDA Agreement">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label>Jurisdiction (optional)</label>
+              <input type="text" id="jurisdiction" placeholder="e.g. India, NY">
+            </div>
+          </div>
+
+          <div id="progress-section" style="display:none; margin-top:16px">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:4px">
+              <span id="progress-label">Uploading…</span>
+              <span id="progress-pct">0%</span>
+            </div>
+            <div class="progress-wrap"><div class="progress-bar" id="progress-bar" style="width:0%"></div></div>
+          </div>
+
+          <button class="btn btn-primary btn-full" style="margin-top:16px" id="upload-btn" onclick="doUpload()" disabled>
+            Upload Document
+          </button>
+        </div>
+      </div>
+
+      <!-- Documents table -->
+      <div class="card">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div class="card-title">Your Documents</div>
+            <div class="card-subtitle" id="doc-count">Loading…</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="loadDocuments()">↻ Refresh</button>
+        </div>
+        <div class="card-body" style="padding:0">
+          <div id="doc-list"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="api.js"></script>
+<script>
+  if (!API.requireAuth()) throw '';
+
+  let pollTimer = null;
+  let selectedFile = null;
+
+  // ── Drag & drop ──────────────────────────────────────────────────────────
+  const dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) setFile(f);
+  });
+
+  function onFileSelect(input) { if (input.files[0]) setFile(input.files[0]); }
+
+  function setFile(f) {
+    selectedFile = f;
+    document.getElementById('drop-label').textContent = 'Click to change file';
+    document.getElementById('file-info').style.display = 'block';
+    document.getElementById('file-info').textContent = `📎 ${f.name}  (${(f.size/1024/1024).toFixed(2)} MB)`;
+    document.getElementById('upload-btn').disabled = false;
+  }
+
+  // ── Upload ───────────────────────────────────────────────────────────────
+  async function doUpload() {
+    if (!selectedFile) return;
+    const btn = document.getElementById('upload-btn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Uploading…';
+    document.getElementById('upload-alert').innerHTML = '';
+
+    setProgress(10, 'Uploading file…');
+
+    try {
+      const jurisdiction = document.getElementById('jurisdiction').value.trim() || undefined;
+      await API.uploadDocument(selectedFile, jurisdiction);
+      setProgress(40, 'Processing document…');
+      toast('Document uploaded — processing started', 'success');
+
+      // Poll for completion
+      let attempts = 0;
+      const maxAttempts = 60;
+      const pollId = setInterval(async () => {
+        attempts++;
+        const docs = await API.listDocuments();
+        const fresh = docs.documents[0];
+        if (!fresh) return;
+
+        if (fresh.status === 'ready') {
+          clearInterval(pollId);
+          setProgress(100, `Done! ${fresh.chunk_count} chunks indexed`);
+          toast(`✅ ${fresh.original_filename} is ready!`, 'success');
+          setTimeout(() => { document.getElementById('progress-section').style.display='none'; }, 3000);
+          btn.disabled = false; btn.innerHTML = 'Upload Document';
+          selectedFile = null;
+          document.getElementById('file-info').style.display = 'none';
+          document.getElementById('upload-btn').disabled = true;
+          document.getElementById('drop-label').textContent = 'Click to choose file or drag & drop';
+          loadDocuments();
+        } else if (fresh.status === 'failed') {
+          clearInterval(pollId);
+          setProgress(0, '');
+          document.getElementById('progress-section').style.display = 'none';
+          document.getElementById('upload-alert').innerHTML = `<div class="alert alert-error">❌ Processing failed: ${fresh.error_message || 'Unknown error'}</div>`;
+          btn.disabled = false; btn.innerHTML = 'Upload Document';
+          loadDocuments();
+        } else {
+          const pct = Math.min(40 + attempts * 1.5, 90);
+          setProgress(pct, 'Processing chunks…');
+        }
+
+        if (attempts >= maxAttempts) {
+          clearInterval(pollId);
+          document.getElementById('progress-section').style.display = 'none';
+          btn.disabled = false; btn.innerHTML = 'Upload Document';
+          loadDocuments();
+        }
+      }, 3000);
+
+    } catch(err) {
+      document.getElementById('upload-alert').innerHTML = `<div class="alert alert-error">❌ ${err.detail || 'Upload failed'}</div>`;
+      document.getElementById('progress-section').style.display = 'none';
+      btn.disabled = false; btn.innerHTML = 'Upload Document';
+    }
+  }
+
+  function setProgress(pct, label) {
+    document.getElementById('progress-section').style.display = pct > 0 ? 'block' : 'none';
+    document.getElementById('progress-bar').style.width = pct + '%';
+    document.getElementById('progress-pct').textContent = Math.round(pct) + '%';
+    document.getElementById('progress-label').textContent = label;
+  }
+
+  // ── Load documents ───────────────────────────────────────────────────────
+  async function loadDocuments() {
+    try {
+      const data = await API.listDocuments();
+      const docs = data.documents || [];
+      renderDocs(docs);
+      updateStats(docs);
+
+      const hasStuck = docs.some(d => d.status==='processing' || d.status==='pending');
+      document.getElementById('reset-btn').style.display = hasStuck ? 'flex' : 'none';
+
+      if (hasStuck && !pollTimer) {
+        pollTimer = setInterval(loadDocuments, 4000);
+      } else if (!hasStuck && pollTimer) {
+        clearInterval(pollTimer); pollTimer = null;
+      }
+    } catch(e) { console.error(e); }
+  }
+
+  function updateStats(docs) {
+    document.getElementById('stat-total').textContent = docs.length;
+    document.getElementById('stat-ready').textContent = docs.filter(d=>d.status==='ready').length;
+    document.getElementById('stat-processing').textContent = docs.filter(d=>d.status==='processing'||d.status==='pending').length;
+  }
+
+  function renderDocs(docs) {
+    const el = document.getElementById('doc-list');
+    document.getElementById('doc-count').textContent = docs.length ? `${docs.length} document${docs.length!==1?'s':''}` : 'No documents yet';
+
+    if (!docs.length) {
+      el.innerHTML = `<div class="empty-state"><div class="icon">📂</div><h3>No documents yet</h3><p>Upload a PDF, DOCX, or TXT to get started.</p></div>`;
+      return;
+    }
+
+    el.innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Name</th><th>Type</th><th>Status</th><th>Chunks</th><th></th>
+          </tr></thead>
+          <tbody>
+            ${docs.map(d => `
+              <tr>
+                <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${d.original_filename}">
+                  ${d.original_filename}
+                </td>
+                <td><span style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--text-secondary)">${d.file_type}</span></td>
+                <td>${statusBadge(d)}</td>
+                <td>${d.chunk_count || '—'}</td>
+                <td>
+                  <button class="btn btn-danger btn-sm" onclick="deleteDoc('${d.id}', this)">Delete</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  function statusBadge(d) {
+    if (d.status === 'ready') return `<span class="badge badge-ready">✓ Ready</span>`;
+    if (d.status === 'processing') return `<span class="badge badge-processing"><span class="spinner" style="width:10px;height:10px;border-width:1.5px"></span> Processing</span>`;
+    if (d.status === 'pending') return `<span class="badge badge-pending">⏳ Pending</span>`;
+    return `<span class="badge badge-failed" title="${d.error_message||''}">✕ Failed</span>`;
+  }
+
+  async function deleteDoc(id, btn) {
+    if (!confirm('Delete this document? This cannot be undone.')) return;
+    btn.disabled = true; btn.textContent = '…';
+    try {
+      await API.deleteDocument(id);
+      toast('Document deleted', 'success');
+      loadDocuments();
+    } catch(e) { toast(e.detail || 'Delete failed', 'error'); btn.disabled=false; btn.textContent='Delete'; }
+  }
+
+  async function resetStuck() {
+    try {
+      const r = await API.resetStuck();
+      toast(r.message, 'success');
+      loadDocuments();
+    } catch(e) { toast('Reset failed', 'error'); }
+  }
+
+  async function doLogout() {
+    try { await API.logout(); } catch(e) {}
+    API.clearTokens();
+    window.location.href = '/app/index.html';
+  }
+
+  loadDocuments();
+</script>
+</body>
+</html>

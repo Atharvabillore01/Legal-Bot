@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LegalBot — Ask a Question</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .query-layout { display: grid; grid-template-columns: 340px 1fr; gap: 20px; align-items: start; }
+    @media(max-width:900px){ .query-layout { grid-template-columns: 1fr; } }
+
+    .answer-card { min-height: 300px; }
+
+    .history-item {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background var(--transition);
+    }
+    .history-item:hover { background: var(--surface2); }
+    .history-item:last-child { border-bottom: none; }
+    .history-item .q { font-size: 12px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .history-item .meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+    .meta-row { display: flex; gap: 24px; padding: 14px 20px; border-top: 1px solid var(--border); background: var(--surface2); font-size: 12px; color: var(--text-secondary); border-radius: 0 0 var(--radius) var(--radius); flex-wrap: wrap; }
+    .meta-item { display: flex; flex-direction: column; gap: 2px; }
+    .meta-item strong { color: var(--text); font-size: 13px; font-weight: 600; }
+
+    .thinking {
+      display: flex; align-items: center; gap: 12px;
+      padding: 32px 24px;
+      color: var(--text-secondary);
+      font-size: 13px;
+    }
+
+    #suggestions { margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .suggestion {
+      padding: 7px 13px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 12px; font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition);
+      color: var(--text-secondary);
+    }
+    .suggestion:hover { background: var(--primary-light); border-color: var(--primary); color: var(--primary); }
+  </style>
+</head>
+<body>
+<div class="app-shell">
+
+  <nav>
+    <a class="nav-brand" href="/app/dashboard.html">
+      <span>⚖️</span> LegalBot
+    </a>
+    <div class="nav-links">
+      <a class="nav-link" href="/app/dashboard.html">📁 Documents</a>
+      <a class="nav-link active" href="/app/query.html">💬 Ask a Question</a>
+      <button class="nav-link danger" onclick="doLogout()">Sign Out</button>
+    </div>
+  </nav>
+
+  <div class="main">
+
+    <div class="page-header">
+      <div>
+        <h1>Ask a Question</h1>
+        <p>Query your legal documents with natural language</p>
+      </div>
+    </div>
+
+    <div class="query-layout">
+
+      <!-- Left: form + history -->
+      <div style="display:flex;flex-direction:column;gap:16px">
+
+        <!-- Query form -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Your Question</div>
+          </div>
+          <div class="card-body">
+            <div id="form-alert"></div>
+
+            <div id="suggestions">
+              <span class="suggestion" onclick="useSuggestion(this)">Summarize key findings</span>
+              <span class="suggestion" onclick="useSuggestion(this)">What are the main obligations?</span>
+              <span class="suggestion" onclick="useSuggestion(this)">Key dates and deadlines</span>
+              <span class="suggestion" onclick="useSuggestion(this)">Termination clauses</span>
+            </div>
+
+            <div class="form-group">
+              <textarea id="query-input" rows="4" placeholder="e.g. What are the key findings of this court case?" onkeydown="handleKey(event)"></textarea>
+            </div>
+
+            <div class="grid-2" style="gap:10px;margin-bottom:12px">
+              <div class="form-group" style="margin:0">
+                <label>Jurisdiction (optional)</label>
+                <input type="text" id="q-jurisdiction" placeholder="e.g. India">
+              </div>
+              <div class="form-group" style="margin:0">
+                <label>Results (k)</label>
+                <select id="q-k">
+                  <option value="5">5 chunks</option>
+                  <option value="7" selected>7 chunks</option>
+                  <option value="10">10 chunks</option>
+                  <option value="15">15 chunks</option>
+                </select>
+              </div>
+            </div>
+
+            <button class="btn btn-primary btn-full" id="ask-btn" onclick="doQuery()">
+              ⚡ Ask Question
+            </button>
+            <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px">Press Ctrl+Enter to submit</div>
+          </div>
+        </div>
+
+        <!-- History -->
+        <div class="card" id="history-card" style="display:none">
+          <div class="card-header">
+            <div class="card-title">Recent Questions</div>
+          </div>
+          <div id="history-list"></div>
+        </div>
+
+      </div>
+
+      <!-- Right: answer -->
+      <div>
+        <!-- Placeholder -->
+        <div class="card answer-card" id="placeholder-card">
+          <div style="padding:60px 32px; text-align:center; color:var(--text-secondary)">
+            <div style="font-size:48px;margin-bottom:16px">💬</div>
+            <h3 style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:8px">Ask anything about your documents</h3>
+            <p style="font-size:13px;max-width:300px;margin:0 auto">Upload a legal document from the dashboard, then ask questions and get cited answers.</p>
+          </div>
+        </div>
+
+        <!-- Answer card -->
+        <div class="card answer-card" id="answer-card" style="display:none">
+          <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+            <div class="card-title">Answer</div>
+            <div id="conf-badge"></div>
+          </div>
+          <div class="card-body">
+            <div id="answer-body"></div>
+          </div>
+
+          <!-- Tabs: Sources / Citations -->
+          <div style="padding:0 20px">
+            <div class="tabs">
+              <button class="tab-btn active" onclick="switchTab('sources')">📎 Sources</button>
+              <button class="tab-btn" onclick="switchTab('citations')">🔖 Citations</button>
+            </div>
+            <div class="tab-panel active" id="tab-sources">
+              <div id="sources-list"></div>
+            </div>
+            <div class="tab-panel" id="tab-citations">
+              <div id="citations-list"></div>
+            </div>
+          </div>
+
+          <div class="meta-row" id="meta-row"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="api.js"></script>
+<script>
+  if (!API.requireAuth()) throw '';
+
+  let history = JSON.parse(localStorage.getItem('query_history') || '[]');
+  let lastResult = null;
+
+  function useSuggestion(el) {
+    document.getElementById('query-input').value = el.textContent;
+    document.getElementById('query-input').focus();
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); doQuery(); }
+  }
+
+  function switchTab(name) {
+    document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', (i===0&&name==='sources')||(i===1&&name==='citations')));
+    document.getElementById('tab-sources').classList.toggle('active', name==='sources');
+    document.getElementById('tab-citations').classList.toggle('active', name==='citations');
+  }
+
+  async function doQuery() {
+    const q = document.getElementById('query-input').value.trim();
+    if (!q) { document.getElementById('form-alert').innerHTML = '<div class="alert alert-warning">Please enter a question.</div>'; return; }
+    document.getElementById('form-alert').innerHTML = '';
+
+    const btn = document.getElementById('ask-btn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Thinking…';
+
+    document.getElementById('placeholder-card').style.display = 'none';
+    document.getElementById('answer-card').style.display = 'block';
+    document.getElementById('answer-body').innerHTML = `<div class="thinking"><span class="spinner" style="width:20px;height:20px;border-width:3px"></span> Analyzing your documents…</div>`;
+    document.getElementById('conf-badge').innerHTML = '';
+    document.getElementById('sources-list').innerHTML = '';
+    document.getElementById('citations-list').innerHTML = '';
+    document.getElementById('meta-row').innerHTML = '';
+
+    const k = parseInt(document.getElementById('q-k').value);
+    const jur = document.getElementById('q-jurisdiction').value.trim() || undefined;
+
+    try {
+      const data = await API.query(q, k, jur);
+      lastResult = data;
+      renderAnswer(data);
+      saveHistory(q, data);
+    } catch(err) {
+      document.getElementById('answer-body').innerHTML = `<div class="alert alert-error">❌ ${err.detail || 'Query failed. Make sure you have documents uploaded.'}</div>`;
+    } finally {
+      btn.disabled = false; btn.innerHTML = '⚡ Ask Question';
+    }
+  }
+
+  function renderAnswer(data) {
+    // Confidence badge
+    const lvl = (data.confidence_level || 'LOW').toUpperCase();
+    const cls = lvl==='HIGH'?'conf-high':lvl==='MEDIUM'?'conf-medium':'conf-low';
+    const icon = lvl==='HIGH'?'✓':lvl==='MEDIUM'?'△':'⚠';
+    const pct = Math.round((data.confidence_score||0)*100);
+    document.getElementById('conf-badge').innerHTML = `<span class="conf-badge ${cls}">${icon} ${lvl} (${pct}%)</span>`;
+
+    // Answer
+    document.getElementById('answer-body').innerHTML = `<div class="answer-prose">${renderMarkdown(data.answer)}</div>`;
+
+    // Source chunks
+    const sources = data.source_chunks || [];
+    if (sources.length) {
+      document.getElementById('sources-list').innerHTML = sources.map((s,i) => `
+        <div class="source-card">
+          <div class="source-header" onclick="toggleSource(${i})">
+            <div>
+              <div class="source-title">📄 ${s.doc_name || 'Document'}</div>
+              <div class="source-meta">
+                ${s.page_number ? `Page ${s.page_number}` : ''}
+                ${s.section ? ` · ${s.section}` : ''}
+                ${s.jurisdiction ? ` · ${s.jurisdiction}` : ''}
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:11px;font-weight:600;color:var(--primary)">${Math.round((s.relevance_score||0)*100)}%</span>
+              <span style="font-size:10px;color:var(--text-muted)" id="chevron-${i}">▼</span>
+            </div>
+          </div>
+          <div class="source-body" id="source-body-${i}">
+            ${(s.text||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+          </div>
+        </div>
+      `).join('');
+    } else {
+      document.getElementById('sources-list').innerHTML = '<div style="padding:20px;font-size:13px;color:var(--text-muted);text-align:center">No source chunks available</div>';
+    }
+
+    // Citations
+    const cits = data.citations || [];
+    if (cits.length) {
+      document.getElementById('citations-list').innerHTML = cits.map((c,i) => `
+        <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-size:13px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span style="width:20px;height:20px;background:var(--primary-light);color:var(--primary);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${i+1}</span>
+            <strong>${c.source_doc || 'Document'}</strong>
+            ${c.page_number ? `<span style="font-size:11px;color:var(--text-muted)">· Page ${c.page_number}</span>` : ''}
+          </div>
+          ${c.text_excerpt ? `<div style="font-size:12px;color:var(--text-secondary);padding:8px 10px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--primary)">${c.text_excerpt.replace(/</g,'&lt;')}</div>` : ''}
+        </div>
+      `).join('');
+    } else {
+      document.getElementById('citations-list').innerHTML = '<div style="padding:20px;font-size:13px;color:var(--text-muted);text-align:center">No citations in this response</div>';
+    }
+
+    // Meta row
+    document.getElementById('meta-row').innerHTML = `
+      <div class="meta-item"><span>Model</span><strong>${data.model || '—'}</strong></div>
+      <div class="meta-item"><span>Citations</span><strong>${cits.length}</strong></div>
+      <div class="meta-item"><span>Sources</span><strong>${sources.length}</strong></div>
+      <div class="meta-item"><span>Search</span><strong>${Math.round(data.search_time_ms||0)}ms</strong></div>
+      <div class="meta-item"><span>Total</span><strong>${Math.round(data.total_time_ms||0)}ms</strong></div>
+      ${data.has_contradictions ? '<div class="meta-item"><strong style="color:var(--warning)">⚠ Contradictions detected</strong></div>' : ''}
+    `;
+  }
+
+  function toggleSource(i) {
+    const body = document.getElementById(`source-body-${i}`);
+    const chev = document.getElementById(`chevron-${i}`);
+    const open = body.classList.toggle('open');
+    chev.textContent = open ? '▲' : '▼';
+  }
+
+  function saveHistory(q, data) {
+    history.unshift({ q, confidence: data.confidence_level, time: new Date().toLocaleTimeString() });
+    if (history.length > 20) history.pop();
+    localStorage.setItem('query_history', JSON.stringify(history));
+    renderHistory();
+  }
+
+  function renderHistory() {
+    if (!history.length) return;
+    document.getElementById('history-card').style.display = 'block';
+    document.getElementById('history-list').innerHTML = history.slice(0,8).map(h => `
+      <div class="history-item" onclick="document.getElementById('query-input').value='${h.q.replace(/'/g,"\\'")}'; document.getElementById('query-input').focus()">
+        <div class="q">${h.q}</div>
+        <div class="meta">${h.time} · ${h.confidence || '—'}</div>
+      </div>
+    `).join('');
+  }
+
+  async function doLogout() {
+    try { await API.logout(); } catch(e) {}
+    API.clearTokens();
+    window.location.href = '/app/index.html';
+  }
+
+  renderHistory();
+</script>
+</body>
+</html>
