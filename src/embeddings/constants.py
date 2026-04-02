@@ -36,7 +36,7 @@ IVF_PROBE_MIN = 1
 IVF_PROBE_MAX = 256  # Can search all clusters
 
 # Storage Paths
-INDEXES_BASE_DIR = "/indexes"
+INDEXES_BASE_DIR = "./indexes"
 METADATA_FILE = "metadata.json"
 METADATA_BACKUP_FILE = "metadata.json.bak"
 INDEX_FILE = "index.faiss"
